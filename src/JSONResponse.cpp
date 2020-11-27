@@ -238,11 +238,11 @@ private:
 	std::stack<Value> _responseStack;
 };
 
-Value parseJSON(const std::string& json)
+Value parseJSON(const std::string_view& json)
 {
 	ResponseHandler handler;
 	rapidjson::Reader reader;
-	rapidjson::StringStream ss(json.c_str());
+	rapidjson::MemoryStream ss(json.data(), json.size());
 
 	reader.Parse(ss, handler);
 
