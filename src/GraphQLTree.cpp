@@ -672,7 +672,7 @@ template <>
 const std::string ast_control<document_content>::error_message =
 	"Expected https://facebook.github.io/graphql/June2018/#Document";
 
-ast parseString(std::string_view input)
+ast parseString(const std::string_view& input)
 {
 	ast result { std::make_shared<ast_input>(
 					 ast_input { std::vector<char> { input.cbegin(), input.cend() } }),
@@ -686,7 +686,7 @@ ast parseString(std::string_view input)
 	return result;
 }
 
-ast parseFile(std::string_view filename)
+ast parseFile(const std::string_view& filename)
 {
 	ast result { std::make_shared<ast_input>(
 					 ast_input { std::make_unique<file_input<>>(filename) }),

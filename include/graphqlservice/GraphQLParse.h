@@ -34,8 +34,8 @@ struct ast
 	bool validated = false;
 };
 
-GRAPHQLPEG_EXPORT ast parseString(std::string_view input);
-GRAPHQLPEG_EXPORT ast parseFile(std::string_view filename);
+GRAPHQLPEG_EXPORT ast parseString(const std::string_view& input);
+GRAPHQLPEG_EXPORT ast parseFile(const std::string_view& filename);
 
 } /* namespace peg */
 
