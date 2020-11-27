@@ -13,6 +13,25 @@
 #include <stack>
 #include <tuple>
 
+namespace {
+
+using namespace std::literals;
+
+// Escaped Unicode
+constexpr std::string_view strDoubleQuote { "\""sv };
+constexpr std::string_view strBackSlash { "\\"sv };
+constexpr std::string_view strSlash { "/"sv };
+constexpr std::string_view strBackSpace { "\b"sv };
+constexpr std::string_view strFormFeed { "\f"sv };
+constexpr std::string_view strNewLine { "\n"sv };
+constexpr std::string_view strCarriageReturn { "\r"sv };
+constexpr std::string_view strTab { "\t"sv };
+
+// Block (triple quotes)
+constexpr std::string_view strTripleQuote { "\"\"\""sv };
+
+} // namespace
+
 namespace graphql {
 namespace peg {
 
@@ -71,11 +90,13 @@ struct ast_selector<escaped_unicode> : std::true_type
 		if (n->has_content())
 		{
 			auto content = n->string_view();
+			std::string unescaped;
 
-			if (unescape::utf8_append_utf32(n->unescaped,
+			if (unescape::utf8_append_utf32(unescaped,
 					unescape::unhex_string<uint32_t>(content.data() + 1,
 						content.data() + content.size())))
 			{
+				n->unescaped = std::move(unescaped);
 				return;
 			}
 		}
@@ -96,35 +117,35 @@ struct ast_selector<escaped_char> : std::true_type
 			switch (ch)
 			{
 				case '"':
-					n->unescaped = "\"";
+					n->unescaped = strDoubleQuote;
 					return;
 
 				case '\\':
-					n->unescaped = "\\";
+					n->unescaped = strBackSlash;
 					return;
 
 				case '/':
-					n->unescaped = "/";
+					n->unescaped = strSlash;
 					return;
 
 				case 'b':
-					n->unescaped = "\b";
+					n->unescaped = strBackSpace;
 					return;
 
 				case 'f':
-					n->unescaped = "\f";
+					n->unescaped = strFormFeed;
 					return;
 
 				case 'n':
-					n->unescaped = "\n";
+					n->unescaped = strNewLine;
 					return;
 
 				case 'r':
-					n->unescaped = "\r";
+					n->unescaped = strCarriageReturn;
 					return;
 
 				case 't':
-					n->unescaped = "\t";
+					n->unescaped = strTab;
 					return;
 
 				default:
@@ -150,7 +171,7 @@ struct ast_selector<block_escape_sequence> : std::true_type
 {
 	static void transform(std::unique_ptr<ast_node>& n)
 	{
-		n->unescaped = R"bq(""")bq";
+		n->unescaped = strTripleQuote;
 	}
 };
 
@@ -172,17 +193,30 @@ struct ast_selector<string_value> : std::true_type
 		{
 			if (n->children.size() > 1)
 			{
-				n->unescaped.reserve(std::accumulate(n->children.cbegin(),
+				std::string unescaped;
+				unescaped.reserve(std::accumulate(n->children.cbegin(),
 					n->children.cend(),
 					size_t(0),
 					[](size_t total, const std::unique_ptr<ast_node>& child) {
-						return total + child->unescaped.size();
+						if (std::holds_alternative<std::string>(child->unescaped))
+						{
+							return total + std::get<std::string>(child->unescaped).size();
+						}
+						return total + std::get<std::string_view>(child->unescaped).size();
 					}));
 
 				for (const auto& child : n->children)
 				{
-					n->unescaped.append(child->unescaped);
+					if (std::holds_alternative<std::string>(child->unescaped))
+					{
+						unescaped.append(std::get<std::string>(child->unescaped));
+					}
+					else
+					{
+						unescaped.append(std::get<std::string_view>(child->unescaped));
+					}
 				}
+				n->unescaped = std::move(unescaped);
 			}
 			else
 			{

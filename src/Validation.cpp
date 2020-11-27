@@ -157,7 +157,7 @@ void ValidateArgumentValueVisitor::visitFloatValue(const peg::ast_node& floatVal
 
 void ValidateArgumentValueVisitor::visitStringValue(const peg::ast_node& stringValue)
 {
-	response::StringType value { stringValue.unescaped };
+	response::StringType value { stringValue.getUnescapedString() };
 	auto position = stringValue.begin();
 
 	_argumentValue.value = std::make_unique<ValidateArgumentValue>(std::move(value));

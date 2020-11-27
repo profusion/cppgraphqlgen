@@ -21,7 +21,16 @@ using namespace tao::graphqlpeg;
 
 struct ast_node : parse_tree::basic_node<ast_node>
 {
-	std::string unescaped;
+	std::variant<std::string, std::string_view> unescaped;
+
+	std::string getUnescapedString() const
+	{
+		if (std::holds_alternative<std::string>(unescaped))
+		{
+			return std::string(std::get<std::string>(unescaped));
+		}
+		return std::string(std::get<std::string_view>(unescaped));
+	}
 };
 
 struct ast_input

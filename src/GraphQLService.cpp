@@ -275,7 +275,7 @@ void ValueVisitor::visitFloatValue(const peg::ast_node& floatValue)
 
 void ValueVisitor::visitStringValue(const peg::ast_node& stringValue)
 {
-	_value = response::Value(std::string(stringValue.unescaped));
+	_value = response::Value(stringValue.getUnescapedString());
 }
 
 void ValueVisitor::visitBooleanValue(const peg::ast_node& booleanValue)
