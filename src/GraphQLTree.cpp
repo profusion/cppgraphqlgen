@@ -674,11 +674,8 @@ const std::string ast_control<document_content>::error_message =
 
 ast parseString(const std::string_view& input)
 {
-	ast result { std::make_shared<ast_input>(
-					 ast_input { std::vector<char> { input.cbegin(), input.cend() } }),
-		{} };
-	const auto& data = std::get<std::vector<char>>(result.input->data);
-	memory_input<> in(data.data(), data.size(), "GraphQL");
+	ast result { std::make_shared<ast_input>(ast_input { std::string_view { input } }) };
+	memory_input<> in(input.data(), input.size(), "GraphQL");
 
 	result.root =
 		parse_tree::parse<document, ast_node, ast_selector, nothing, ast_control>(std::move(in));
