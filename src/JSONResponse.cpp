@@ -14,9 +14,66 @@
 #include <stack>
 #include <stdexcept>
 
+class StringOwnerBuffer
+{
+public:
+	typedef char Ch;
+
+	StringOwnerBuffer(std::string& storage)
+		: _storage(storage)
+	{
+	}
+
+	void Reserve(size_t count)
+	{
+		_storage.reserve(_storage.length() + count);
+	}
+
+	void PutN(char c, size_t n)
+	{
+		_storage.reserve(_storage.length() + n);
+		for (size_t i = 0; i < n; i++)
+		{
+			_storage.push_back(c);
+		}
+	}
+
+	void Put(char c)
+	{
+		_storage.push_back(c);
+	}
+
+	void Clear()
+	{
+		_storage.clear();
+	}
+
+	void Flush()
+	{
+		return;
+	}
+	size_t Size() const
+	{
+		return _storage.length();
+	}
+
+private:
+	std::string& _storage;
+};
+
+inline void PutReserve(StringOwnerBuffer& stream, size_t count)
+{
+	stream.Reserve(count);
+}
+
+inline void PutN(StringOwnerBuffer& stream, char c, size_t n)
+{
+	stream.PutN(c, n);
+}
+
 namespace graphql::response {
 
-void writeResponse(rapidjson::Writer<rapidjson::StringBuffer>& writer, Value&& response)
+void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& response)
 {
 	switch (response.type())
 	{
@@ -98,13 +155,17 @@ void writeResponse(rapidjson::Writer<rapidjson::StringBuffer>& writer, Value&& r
 	}
 }
 
-std::string toJSON(Value&& response)
+std::string toJSON(Value&& response, size_t reserved)
 {
-	rapidjson::StringBuffer buffer;
-	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+	std::string storage;
+	storage.reserve(reserved);
+
+	StringOwnerBuffer buffer(storage);
+	rapidjson::Writer writer(buffer);
 
 	writeResponse(writer, std::move(response));
-	return buffer.GetString();
+
+	return std::move(storage);
 }
 
 struct ResponseHandler : rapidjson::BaseReaderHandler<rapidjson::UTF8<>, ResponseHandler>
