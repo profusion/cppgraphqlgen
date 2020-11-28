@@ -73,20 +73,18 @@ inline void PutN(StringOwnerBuffer& stream, char c, size_t n)
 
 namespace graphql::response {
 
-void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& response)
+void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, const Value& response)
 {
 	switch (response.type())
 	{
 		case Type::Map:
 		{
-			auto members = response.release<MapType>();
-
 			writer.StartObject();
 
-			for (auto& entry : members)
+			for (auto itr = response.begin(); itr < response.end(); itr++)
 			{
-				writer.Key(entry.first.c_str());
-				writeResponse(writer, std::move(entry.second));
+				writer.Key(itr->first.c_str());
+				writeResponse(writer, itr->second);
 			}
 
 			writer.EndObject();
@@ -95,13 +93,11 @@ void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& respons
 
 		case Type::List:
 		{
-			auto elements = response.release<ListType>();
-
 			writer.StartArray();
 
-			for (auto& entry : elements)
+			for (size_t i = 0; i < response.size(); i++)
 			{
-				writeResponse(writer, std::move(entry));
+				writeResponse(writer, response[i]);
 			}
 
 			writer.EndArray();
@@ -111,7 +107,7 @@ void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& respons
 		case Type::String:
 		case Type::EnumValue:
 		{
-			auto value = response.release<StringType>();
+			auto value = response.get<StringType>();
 
 			writer.String(value.c_str());
 			break;
@@ -143,7 +139,7 @@ void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& respons
 
 		case Type::Scalar:
 		{
-			writeResponse(writer, response.release<ScalarType>());
+			writeResponse(writer, response.get<ScalarType>());
 			break;
 		}
 
@@ -155,7 +151,7 @@ void writeResponse(rapidjson::Writer<StringOwnerBuffer>& writer, Value&& respons
 	}
 }
 
-std::string toJSON(Value&& response, size_t reserved)
+std::string toJSON(const Value& response, size_t reserved)
 {
 	std::string storage;
 	storage.reserve(reserved);
@@ -163,7 +159,7 @@ std::string toJSON(Value&& response, size_t reserved)
 	StringOwnerBuffer buffer(storage);
 	rapidjson::Writer writer(buffer);
 
-	writeResponse(writer, std::move(response));
+	writeResponse(writer, response);
 
 	return std::move(storage);
 }

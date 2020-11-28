@@ -22,7 +22,7 @@
 
 namespace graphql::response {
 
-JSONRESPONSE_EXPORT std::string toJSON(Value&& response, size_t reserved = 4096);
+JSONRESPONSE_EXPORT std::string toJSON(const Value& response, size_t reserved = 4096);
 
 JSONRESPONSE_EXPORT Value parseJSON(const std::string_view& json);
 
