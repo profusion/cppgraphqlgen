@@ -57,7 +57,7 @@ struct ScalarData
 
 struct TypedData
 	: std::variant<std::optional<MapData>, std::optional<ListData>, std::optional<StringOrEnumData>,
-		  std::optional<ScalarData>, BooleanType, IntType, FloatType>
+		  std::optional<ScalarData>, BooleanType, IntType, FloatType, std::optional<ResultType>>
 {
 };
 
@@ -95,6 +95,9 @@ Value::Value(Type type /*= Type::Null*/)
 		case Type::Float:
 			_data = std::make_unique<TypedData>(TypedData { FloatType { 0.0 } });
 			break;
+
+		case Type::Result:
+			_data = std::make_unique<TypedData>(TypedData { std::make_optional<ResultType>() });
 
 		default:
 			break;
@@ -136,6 +139,12 @@ Value::Value(IntType value)
 Value::Value(FloatType value)
 	: _type(Type::Float)
 	, _data(std::make_unique<TypedData>(TypedData { value }))
+{
+}
+
+Value::Value(ResultType&& value)
+	: _type(Type::Result)
+	, _data(std::make_unique<TypedData>(TypedData { ResultType { std::move(value) } }))
 {
 }
 
@@ -237,6 +246,12 @@ size_t Value::size() const
 			const auto& listData = std::get<std::optional<ListData>>(*_data);
 
 			return listData->list.size();
+		}
+
+		case Type::Result:
+		{
+			const auto& resultData = std::get<std::optional<ResultType>>(*_data);
+			return resultData->size();
 		}
 
 		default:
@@ -479,6 +494,17 @@ const ScalarType& Value::get<ScalarType>() const
 }
 
 template <>
+const ResultType& Value::get<ResultType>() const
+{
+	if (type() != Type::Result)
+	{
+		throw std::logic_error("Invalid call to Value::get for ResultType");
+	}
+
+	return *std::get<std::optional<ResultType>>(*_data);
+}
+
+template <>
 MapType Value::release<MapType>()
 {
 	if (type() != Type::Map)
@@ -534,6 +560,123 @@ ScalarType Value::release<ScalarType>()
 	ScalarType result = std::move(std::get<std::optional<ScalarData>>(*_data)->scalar);
 
 	return result;
+}
+
+template <>
+ResultType Value::release<ResultType>()
+{
+	if (type() != Type::Result)
+	{
+		throw std::logic_error("Invalid call to Value::release for ResultType");
+	}
+
+	ResultType result = std::move(*std::get<std::optional<ResultType>>(*_data));
+
+	return result;
+}
+
+Value Value::toMap()
+{
+	if (type() != Type::Result)
+	{
+		throw std::logic_error("Invalid call to Value::toMap for ResultType");
+	}
+
+	auto resultData = release<ResultType>();
+
+	Value map(Type::Map);
+	map.reserve(resultData.size());
+	map.emplace_back(std::string { strData }, std::move(resultData.data));
+	if (resultData.errors.size() > 0)
+	{
+		map.emplace_back(std::string { strErrors }, buildErrorValues(resultData.errors));
+	}
+
+	return map;
+}
+
+size_t ResultType::size() const
+{
+	return 1 + (errors.size() > 0);
+}
+
+void addErrorMessage(std::string&& message, Value& error)
+{
+	error.emplace_back(std::string { strMessage }, response::Value(std::move(message)));
+}
+
+void addErrorLocation(const graphql::error::schema_location& location, response::Value& error)
+{
+	if (location == graphql::error::emptyLocation)
+	{
+		return;
+	}
+
+	response::Value errorLocation(response::Type::Map);
+
+	errorLocation.reserve(2);
+	errorLocation.emplace_back(std::string { strLine },
+		response::Value(static_cast<response::IntType>(location.line)));
+	errorLocation.emplace_back(std::string { strColumn },
+		response::Value(static_cast<response::IntType>(location.column)));
+
+	response::Value errorLocations(response::Type::List);
+
+	errorLocations.reserve(1);
+	errorLocations.emplace_back(std::move(errorLocation));
+
+	error.emplace_back(std::string { strLocations }, std::move(errorLocations));
+}
+
+void addErrorPath(graphql::error::field_path&& path, Value& error)
+{
+	if (path.empty())
+	{
+		return;
+	}
+
+	response::Value errorPath(response::Type::List);
+
+	errorPath.reserve(path.size());
+	while (!path.empty())
+	{
+		auto& segment = path.front();
+
+		if (std::holds_alternative<std::string>(segment))
+		{
+			errorPath.emplace_back(response::Value(std::move(std::get<std::string>(segment))));
+		}
+		else if (std::holds_alternative<size_t>(segment))
+		{
+			errorPath.emplace_back(
+				response::Value(static_cast<response::IntType>(std::get<size_t>(segment))));
+		}
+
+		path.pop();
+	}
+
+	error.emplace_back(std::string { strPath }, std::move(errorPath));
+}
+
+response::Value buildErrorValues(const std::vector<graphql::error::schema_error>& structuredErrors)
+{
+	response::Value errors(response::Type::List);
+
+	errors.reserve(structuredErrors.size());
+
+	for (auto error : structuredErrors)
+	{
+		response::Value entry(response::Type::Map);
+
+		entry.reserve(3);
+		addErrorMessage(std::move(error.message), entry);
+		addErrorLocation(error.location, entry);
+		addErrorPath(std::move(error.path), entry);
+
+		errors.emplace_back(std::move(entry));
+	}
+
+	return errors;
 }
 
 } /* namespace graphql::response */
