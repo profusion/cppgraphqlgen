@@ -4,6 +4,7 @@
 #include "TodayObjects.h"
 
 #include "graphqlservice/Introspection.h"
+#include "graphqlservice/GraphQLValidation.h"
 
 #include <algorithm>
 #include <array>
@@ -90,12 +91,173 @@ today::CompleteTaskInput ModifiedArgument<today::CompleteTaskInput>::convert(con
 
 namespace today {
 
+class ValidationContext : public service::ValidationContext
+{
+public:
+	ValidationContext()
+	{
+		auto typeBoolean = makeNamedValidateType(service::ScalarType { "Boolean" });
+		auto typeFloat = makeNamedValidateType(service::ScalarType { "Float" });
+		auto typeID = makeNamedValidateType(service::ScalarType { "ID" });
+		auto typeInt = makeNamedValidateType(service::ScalarType { "Int" });
+		auto typeString = makeNamedValidateType(service::ScalarType { "String" });
+
+		auto typeItemCursor = makeNamedValidateType(service::ScalarType { "ItemCursor" });
+		auto typeDateTime = makeNamedValidateType(service::ScalarType { "DateTime" });
+
+		auto typeTaskState = makeNamedValidateType(service::EnumType { "TaskState", {
+				"New",
+				"Started",
+				"Complete",
+				"Unassigned"
+			} });
+
+		auto typeCompleteTaskInput = makeNamedValidateType(service::InputObjectType { "CompleteTaskInput" });
+
+		auto typeUnionType = makeNamedValidateType(service::UnionType { "UnionType" });
+
+		auto typeNode = makeNamedValidateType(service::InterfaceType { "Node" });
+
+		auto typeQuery = makeNamedValidateType(service::ObjectType { "Query" });
+		auto typePageInfo = makeNamedValidateType(service::ObjectType { "PageInfo" });
+		auto typeAppointmentEdge = makeNamedValidateType(service::ObjectType { "AppointmentEdge" });
+		auto typeAppointmentConnection = makeNamedValidateType(service::ObjectType { "AppointmentConnection" });
+		auto typeTaskEdge = makeNamedValidateType(service::ObjectType { "TaskEdge" });
+		auto typeTaskConnection = makeNamedValidateType(service::ObjectType { "TaskConnection" });
+		auto typeFolderEdge = makeNamedValidateType(service::ObjectType { "FolderEdge" });
+		auto typeFolderConnection = makeNamedValidateType(service::ObjectType { "FolderConnection" });
+		auto typeCompleteTaskPayload = makeNamedValidateType(service::ObjectType { "CompleteTaskPayload" });
+		auto typeMutation = makeNamedValidateType(service::ObjectType { "Mutation" });
+		auto typeSubscription = makeNamedValidateType(service::ObjectType { "Subscription" });
+		auto typeAppointment = makeNamedValidateType(service::ObjectType { "Appointment" });
+		auto typeTask = makeNamedValidateType(service::ObjectType { "Task" });
+		auto typeFolder = makeNamedValidateType(service::ObjectType { "Folder" });
+		auto typeNestedType = makeNamedValidateType(service::ObjectType { "NestedType" });
+		auto typeExpensive = makeNamedValidateType(service::ObjectType { "Expensive" });
+
+		typeCompleteTaskInput->setFields({
+				{ "id", { makeNonNullOfType(typeID), 0, 0 } },
+				{ "isComplete", { typeBoolean, 1, 1 } },
+				{ "clientMutationId", { typeString, 0, 0 } }
+			});
+
+		typeUnionType->setPossibleTypes({
+				typeAppointment.get(),
+				typeTask.get(),
+				typeFolder.get()
+			});
+
+
+		typeNode->setPossibleTypes({
+				typeAppointment.get(),
+				typeTask.get(),
+				typeFolder.get()
+			});
+		typeNode->setFields({
+				{ "id", { makeNonNullOfType(typeID), {  } } }
+			});
+
+		typeQuery->setFields({
+				{ "node", { typeNode, { { "id", { makeNonNullOfType(typeID), 0, 0 } } } } },
+				{ "appointments", { makeNonNullOfType(typeAppointmentConnection), { { "first", { typeInt, 0, 0 } }, { "after", { typeItemCursor, 0, 0 } }, { "last", { typeInt, 0, 0 } }, { "before", { typeItemCursor, 0, 0 } } } } },
+				{ "tasks", { makeNonNullOfType(typeTaskConnection), { { "first", { typeInt, 0, 0 } }, { "after", { typeItemCursor, 0, 0 } }, { "last", { typeInt, 0, 0 } }, { "before", { typeItemCursor, 0, 0 } } } } },
+				{ "unreadCounts", { makeNonNullOfType(typeFolderConnection), { { "first", { typeInt, 0, 0 } }, { "after", { typeItemCursor, 0, 0 } }, { "last", { typeInt, 0, 0 } }, { "before", { typeItemCursor, 0, 0 } } } } },
+				{ "appointmentsById", { makeNonNullOfType(makeListOfType(typeAppointment)), { { "ids", { makeNonNullOfType(makeListOfType(makeNonNullOfType(typeID))), 1, 1 } } } } },
+				{ "tasksById", { makeNonNullOfType(makeListOfType(typeTask)), { { "ids", { makeNonNullOfType(makeListOfType(makeNonNullOfType(typeID))), 0, 0 } } } } },
+				{ "unreadCountsById", { makeNonNullOfType(makeListOfType(typeFolder)), { { "ids", { makeNonNullOfType(makeListOfType(makeNonNullOfType(typeID))), 0, 0 } } } } },
+				{ "nested", { makeNonNullOfType(typeNestedType), {  } } },
+				{ "unimplemented", { makeNonNullOfType(typeString), {  } } },
+				{ "expensive", { makeNonNullOfType(makeListOfType(makeNonNullOfType(typeExpensive))), {  } } }
+			});
+		typePageInfo->setFields({
+				{ "hasNextPage", { makeNonNullOfType(typeBoolean), {  } } },
+				{ "hasPreviousPage", { makeNonNullOfType(typeBoolean), {  } } }
+			});
+		typeAppointmentEdge->setFields({
+				{ "node", { typeAppointment, {  } } },
+				{ "cursor", { makeNonNullOfType(typeItemCursor), {  } } }
+			});
+		typeAppointmentConnection->setFields({
+				{ "pageInfo", { makeNonNullOfType(typePageInfo), {  } } },
+				{ "edges", { makeListOfType(typeAppointmentEdge), {  } } }
+			});
+		typeTaskEdge->setFields({
+				{ "node", { typeTask, {  } } },
+				{ "cursor", { makeNonNullOfType(typeItemCursor), {  } } }
+			});
+		typeTaskConnection->setFields({
+				{ "pageInfo", { makeNonNullOfType(typePageInfo), {  } } },
+				{ "edges", { makeListOfType(typeTaskEdge), {  } } }
+			});
+		typeFolderEdge->setFields({
+				{ "node", { typeFolder, {  } } },
+				{ "cursor", { makeNonNullOfType(typeItemCursor), {  } } }
+			});
+		typeFolderConnection->setFields({
+				{ "pageInfo", { makeNonNullOfType(typePageInfo), {  } } },
+				{ "edges", { makeListOfType(typeFolderEdge), {  } } }
+			});
+		typeCompleteTaskPayload->setFields({
+				{ "task", { typeTask, {  } } },
+				{ "clientMutationId", { typeString, {  } } }
+			});
+		typeMutation->setFields({
+				{ "completeTask", { makeNonNullOfType(typeCompleteTaskPayload), { { "input", { makeNonNullOfType(typeCompleteTaskInput), 0, 0 } } } } },
+				{ "setFloat", { makeNonNullOfType(typeFloat), { { "value", { makeNonNullOfType(typeFloat), 0, 0 } } } } }
+			});
+		typeSubscription->setFields({
+				{ "nextAppointmentChange", { typeAppointment, {  } } },
+				{ "nodeChange", { makeNonNullOfType(typeNode), { { "id", { makeNonNullOfType(typeID), 0, 0 } } } } }
+			});
+		typeAppointment->setFields({
+				{ "id", { makeNonNullOfType(typeID), {  } } },
+				{ "when", { typeDateTime, {  } } },
+				{ "subject", { typeString, {  } } },
+				{ "isNow", { makeNonNullOfType(typeBoolean), {  } } }
+			});
+		typeTask->setFields({
+				{ "id", { makeNonNullOfType(typeID), {  } } },
+				{ "title", { typeString, {  } } },
+				{ "isComplete", { makeNonNullOfType(typeBoolean), {  } } }
+			});
+		typeFolder->setFields({
+				{ "id", { makeNonNullOfType(typeID), {  } } },
+				{ "name", { typeString, {  } } },
+				{ "unreadCount", { makeNonNullOfType(typeInt), {  } } }
+			});
+		typeNestedType->setFields({
+				{ "depth", { makeNonNullOfType(typeInt), {  } } },
+				{ "nested", { makeNonNullOfType(typeNestedType), {  } } }
+			});
+		typeExpensive->setFields({
+				{ "order", { makeNonNullOfType(typeInt), {  } } }
+			});
+
+
+		_directives = {
+			{ "id", { { introspection::DirectiveLocation::FIELD_DEFINITION }, {  } } },
+			{ "subscriptionTag", { { introspection::DirectiveLocation::SUBSCRIPTION }, { { "field", { typeString, 0, 0 } } } } },
+			{ "queryTag", { { introspection::DirectiveLocation::QUERY }, { { "query", { makeNonNullOfType(typeString), 0, 0 } } } } },
+			{ "fieldTag", { { introspection::DirectiveLocation::FIELD }, { { "field", { makeNonNullOfType(typeString), 0, 0 } } } } },
+			{ "fragmentDefinitionTag", { { introspection::DirectiveLocation::FRAGMENT_DEFINITION }, { { "fragmentDefinition", { makeNonNullOfType(typeString), 0, 0 } } } } },
+			{ "fragmentSpreadTag", { { introspection::DirectiveLocation::FRAGMENT_SPREAD }, { { "fragmentSpread", { makeNonNullOfType(typeString), 0, 0 } } } } },
+			{ "inlineFragmentTag", { { introspection::DirectiveLocation::INLINE_FRAGMENT }, { { "inlineFragment", { makeNonNullOfType(typeString), 0, 0 } } } } }
+		};
+
+		_operationTypes.queryType = "Query";
+		_operationTypes.mutationType = "Mutation";
+		_operationTypes.subscriptionType = "Subscription";
+
+	}
+};
+
+
 Operations::Operations(std::shared_ptr<object::Query> query, std::shared_ptr<object::Mutation> mutation, std::shared_ptr<object::Subscription> subscription)
 	: service::Request({
 		{ "query", query },
 		{ "mutation", mutation },
 		{ "subscription", subscription }
-	})
+	}, std::make_unique<ValidationContext>())
 	, _query(std::move(query))
 	, _mutation(std::move(mutation))
 	, _subscription(std::move(subscription))

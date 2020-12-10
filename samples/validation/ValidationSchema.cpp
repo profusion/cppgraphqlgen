@@ -4,6 +4,7 @@
 #include "ValidationSchema.h"
 
 #include "graphqlservice/Introspection.h"
+#include "graphqlservice/GraphQLValidation.h"
 
 #include <algorithm>
 #include <array>
@@ -832,12 +833,150 @@ std::future<response::Value> Arguments::resolve_typename(service::ResolverParams
 
 } /* namespace object */
 
+class ValidationContext : public service::ValidationContext
+{
+public:
+	ValidationContext()
+	{
+		auto typeBoolean = makeNamedValidateType(service::ScalarType { "Boolean" });
+		auto typeFloat = makeNamedValidateType(service::ScalarType { "Float" });
+		auto typeID = makeNamedValidateType(service::ScalarType { "ID" });
+		auto typeInt = makeNamedValidateType(service::ScalarType { "Int" });
+		auto typeString = makeNamedValidateType(service::ScalarType { "String" });
+
+		auto typeDogCommand = makeNamedValidateType(service::EnumType { "DogCommand", {
+				"SIT",
+				"DOWN",
+				"HEEL"
+			} });
+		auto typeCatCommand = makeNamedValidateType(service::EnumType { "CatCommand", {
+				"JUMP"
+			} });
+
+		auto typeComplexInput = makeNamedValidateType(service::InputObjectType { "ComplexInput" });
+
+		auto typeCatOrDog = makeNamedValidateType(service::UnionType { "CatOrDog" });
+		auto typeDogOrHuman = makeNamedValidateType(service::UnionType { "DogOrHuman" });
+		auto typeHumanOrAlien = makeNamedValidateType(service::UnionType { "HumanOrAlien" });
+
+		auto typeSentient = makeNamedValidateType(service::InterfaceType { "Sentient" });
+		auto typePet = makeNamedValidateType(service::InterfaceType { "Pet" });
+
+		auto typeQuery = makeNamedValidateType(service::ObjectType { "Query" });
+		auto typeDog = makeNamedValidateType(service::ObjectType { "Dog" });
+		auto typeAlien = makeNamedValidateType(service::ObjectType { "Alien" });
+		auto typeHuman = makeNamedValidateType(service::ObjectType { "Human" });
+		auto typeCat = makeNamedValidateType(service::ObjectType { "Cat" });
+		auto typeMutation = makeNamedValidateType(service::ObjectType { "Mutation" });
+		auto typeMutateDogResult = makeNamedValidateType(service::ObjectType { "MutateDogResult" });
+		auto typeSubscription = makeNamedValidateType(service::ObjectType { "Subscription" });
+		auto typeMessage = makeNamedValidateType(service::ObjectType { "Message" });
+		auto typeArguments = makeNamedValidateType(service::ObjectType { "Arguments" });
+
+		typeComplexInput->setFields({
+				{ "name", { typeString, 0, 0 } },
+				{ "owner", { typeString, 0, 0 } }
+			});
+
+		typeCatOrDog->setPossibleTypes({
+				typeCat.get(),
+				typeDog.get()
+			});
+		typeDogOrHuman->setPossibleTypes({
+				typeDog.get(),
+				typeHuman.get()
+			});
+		typeHumanOrAlien->setPossibleTypes({
+				typeHuman.get(),
+				typeAlien.get()
+			});
+
+
+		typeSentient->setPossibleTypes({
+				typeAlien.get(),
+				typeHuman.get()
+			});
+		typeSentient->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } }
+			});
+		typePet->setPossibleTypes({
+				typeDog.get(),
+				typeCat.get()
+			});
+		typePet->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } }
+			});
+
+		typeQuery->setFields({
+				{ "dog", { typeDog, {  } } },
+				{ "human", { typeHuman, {  } } },
+				{ "pet", { typePet, {  } } },
+				{ "catOrDog", { typeCatOrDog, {  } } },
+				{ "arguments", { typeArguments, {  } } },
+				{ "findDog", { typeDog, { { "complex", { typeComplexInput, 0, 0 } } } } },
+				{ "booleanList", { typeBoolean, { { "booleanListArg", { makeListOfType(makeNonNullOfType(typeBoolean)), 0, 0 } } } } }
+			});
+		typeDog->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } },
+				{ "nickname", { typeString, {  } } },
+				{ "barkVolume", { typeInt, {  } } },
+				{ "doesKnowCommand", { makeNonNullOfType(typeBoolean), { { "dogCommand", { makeNonNullOfType(typeDogCommand), 0, 0 } } } } },
+				{ "isHousetrained", { makeNonNullOfType(typeBoolean), { { "atOtherHomes", { typeBoolean, 0, 0 } } } } },
+				{ "owner", { typeHuman, {  } } }
+			});
+		typeAlien->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } },
+				{ "homePlanet", { typeString, {  } } }
+			});
+		typeHuman->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } },
+				{ "pets", { makeNonNullOfType(makeListOfType(makeNonNullOfType(typePet))), {  } } }
+			});
+		typeCat->setFields({
+				{ "name", { makeNonNullOfType(typeString), {  } } },
+				{ "nickname", { typeString, {  } } },
+				{ "doesKnowCommand", { makeNonNullOfType(typeBoolean), { { "catCommand", { makeNonNullOfType(typeCatCommand), 0, 0 } } } } },
+				{ "meowVolume", { typeInt, {  } } }
+			});
+		typeMutation->setFields({
+				{ "mutateDog", { typeMutateDogResult, {  } } }
+			});
+		typeMutateDogResult->setFields({
+				{ "id", { makeNonNullOfType(typeID), {  } } }
+			});
+		typeSubscription->setFields({
+				{ "newMessage", { makeNonNullOfType(typeMessage), {  } } },
+				{ "disallowedSecondRootField", { makeNonNullOfType(typeBoolean), {  } } }
+			});
+		typeMessage->setFields({
+				{ "body", { typeString, {  } } },
+				{ "sender", { makeNonNullOfType(typeID), {  } } }
+			});
+		typeArguments->setFields({
+				{ "multipleReqs", { makeNonNullOfType(typeInt), { { "x", { makeNonNullOfType(typeInt), 0, 0 } }, { "y", { makeNonNullOfType(typeInt), 0, 0 } } } } },
+				{ "booleanArgField", { typeBoolean, { { "booleanArg", { typeBoolean, 0, 0 } } } } },
+				{ "floatArgField", { typeFloat, { { "floatArg", { typeFloat, 0, 0 } } } } },
+				{ "intArgField", { typeInt, { { "intArg", { typeInt, 0, 0 } } } } },
+				{ "nonNullBooleanArgField", { makeNonNullOfType(typeBoolean), { { "nonNullBooleanArg", { makeNonNullOfType(typeBoolean), 0, 0 } } } } },
+				{ "nonNullBooleanListField", { makeListOfType(makeNonNullOfType(typeBoolean)), { { "nonNullBooleanListArg", { makeListOfType(makeNonNullOfType(typeBoolean)), 0, 0 } } } } },
+				{ "booleanListArgField", { makeListOfType(typeBoolean), { { "booleanListArg", { makeNonNullOfType(makeListOfType(typeBoolean)), 0, 0 } } } } },
+				{ "optionalNonNullBooleanArgField", { makeNonNullOfType(typeBoolean), { { "optionalBooleanArg", { makeNonNullOfType(typeBoolean), 1, 1 } } } } }
+			});
+
+		_operationTypes.queryType = "Query";
+		_operationTypes.mutationType = "Mutation";
+		_operationTypes.subscriptionType = "Subscription";
+
+	}
+};
+
+
 Operations::Operations(std::shared_ptr<object::Query> query, std::shared_ptr<object::Mutation> mutation, std::shared_ptr<object::Subscription> subscription)
 	: service::Request({
 		{ "query", query },
 		{ "mutation", mutation },
 		{ "subscription", subscription }
-	})
+	}, std::make_unique<ValidationContext>())
 	, _query(std::move(query))
 	, _mutation(std::move(mutation))
 	, _subscription(std::move(subscription))

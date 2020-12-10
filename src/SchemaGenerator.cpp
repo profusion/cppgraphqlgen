@@ -2066,6 +2066,7 @@ bool Generator::outputSource() const noexcept
 	}
 
 	sourceFile << R"cpp(#include "graphqlservice/Introspection.h"
+#include "graphqlservice/GraphQLValidation.h"
 
 #include <algorithm>
 #include <array>
@@ -2281,6 +2282,8 @@ std::future<response::Value> ModifiedResult<)cpp"
 	{
 		bool firstOperation = true;
 
+		outputValidationContext(sourceFile);
+
 		sourceFile << R"cpp(
 Operations::Operations()cpp";
 
@@ -2316,7 +2319,7 @@ Operations::Operations()cpp";
 		}
 
 		sourceFile << R"cpp(
-	})
+	}, std::make_unique<ValidationContext>())
 )cpp";
 
 		for (const auto& operation : _operationTypes)
@@ -2532,8 +2535,7 @@ Operations::Operations()cpp";
 			{
 				bool firstValue = true;
 
-				sourceFile << R"cpp(	type)cpp" << unionType.cppType
-						   << R"cpp(->AddPossibleTypes({
+				sourceFile << R"cpp(	type)cpp" << unionType.cppType << R"cpp(->AddPossibleTypes({
 )cpp";
 
 				for (const auto& unionOption : unionType.options)
@@ -2747,6 +2749,348 @@ Operations::Operations()cpp";
 )cpp";
 
 	return true;
+}
+
+void Generator::outputValidationInputField(
+	std::ostream& sourceFile, const InputField& inputField) const
+{
+	auto hasDefaultValue = !inputField.defaultValueString.empty();
+	auto hasNonNullDefaultValue = hasDefaultValue && inputField.defaultValueString != "null";
+	sourceFile << R"cpp({ ")cpp" << inputField.name << R"cpp(", { )cpp"
+			   << getValidationType(inputField.type, inputField.modifiers) << R"cpp(, )cpp"
+			   << hasDefaultValue << R"cpp(, )cpp" << hasNonNullDefaultValue << R"cpp( } })cpp";
+}
+
+void Generator::outputValidationInputFieldList(std::ostream& sourceFile, const InputFieldList& list,
+	const std::string indent, const std::string separator) const
+{
+	if (list.empty())
+	{
+		return;
+	}
+
+	bool firstField = true;
+
+	for (const auto& field : list)
+	{
+		if (!firstField)
+		{
+			sourceFile << separator;
+		}
+
+		firstField = false;
+		sourceFile << indent;
+		outputValidationInputField(sourceFile, field);
+	}
+}
+
+void Generator::outputValidationOutputField(
+	std::ostream& sourceFile, const OutputField& outputField) const
+{
+	sourceFile << R"cpp({ ")cpp" << outputField.name << R"cpp(", { )cpp"
+			   << getValidationType(outputField.type, outputField.modifiers) << R"cpp(, { )cpp";
+
+	outputValidationInputFieldList(sourceFile, outputField.arguments, "", ", ");
+
+	sourceFile << R"cpp( } } })cpp";
+}
+
+void Generator::outputValidationSetFields(
+	std::ostream& sourceFile, const std::string& cppType, const OutputFieldList& list) const
+{
+	if (list.empty())
+	{
+		return;
+	}
+
+	bool firstField = true;
+
+	sourceFile << R"cpp(		type)cpp" << cppType << R"cpp(->setFields({
+)cpp";
+
+	for (const auto& field : list)
+	{
+		if (!firstField)
+		{
+			sourceFile << R"cpp(,
+)cpp";
+		}
+
+		firstField = false;
+		sourceFile << R"cpp(				)cpp";
+		outputValidationOutputField(sourceFile, field);
+	}
+
+	sourceFile << R"cpp(
+			});
+)cpp";
+}
+
+void Generator::outputValidationSetPossibleTypes(std::ostream& sourceFile,
+	const std::string& cppType, const std::vector<std::string>& options) const
+{
+	if (options.empty())
+	{
+		return;
+	}
+	bool firstValue = true;
+
+	sourceFile << R"cpp(		type)cpp" << cppType << R"cpp(->setPossibleTypes({
+)cpp";
+
+	for (const auto& option : options)
+	{
+		if (!firstValue)
+		{
+			sourceFile << R"cpp(,
+)cpp";
+		}
+
+		firstValue = false;
+		sourceFile << R"cpp(				type)cpp" << option << R"cpp(.get())cpp";
+	}
+
+	sourceFile << R"cpp(
+			});
+)cpp";
+}
+
+void Generator::outputValidationContext(std::ostream& sourceFile) const
+{
+	sourceFile << R"cpp(
+class ValidationContext : public service::ValidationContext
+{
+public:
+	ValidationContext()
+	{
+)cpp";
+
+	// Add SCALAR types for each of the built-in types
+	for (const auto& builtinType : s_builtinTypes)
+	{
+		sourceFile << R"cpp(		auto type)cpp" << builtinType.first
+				   << R"cpp( = makeNamedValidateType(service::ScalarType { ")cpp"
+				   << builtinType.first << R"cpp(" });
+)cpp";
+	}
+	sourceFile << std::endl;
+
+	if (!_scalarTypes.empty())
+	{
+		for (const auto& scalarType : _scalarTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << scalarType.type
+					   << R"cpp( = makeNamedValidateType(service::ScalarType { ")cpp"
+					   << scalarType.type << R"cpp(" });
+)cpp";
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_enumTypes.empty())
+	{
+		for (const auto& enumType : _enumTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << enumType.cppType
+					   << R"cpp( = makeNamedValidateType(service::EnumType { ")cpp" << enumType.type
+					   << R"cpp(", {
+)cpp";
+
+			bool firstValue = true;
+			for (const auto& value : enumType.values)
+			{
+				if (!firstValue)
+				{
+					sourceFile << R"cpp(,
+)cpp";
+				}
+				firstValue = false;
+				sourceFile << R"cpp(				")cpp" << value.value << R"cpp(")cpp";
+			}
+			sourceFile << R"cpp(
+			} });
+)cpp";
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_inputTypes.empty())
+	{
+		for (const auto& inputType : _inputTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << inputType.cppType
+					   << R"cpp( = makeNamedValidateType(service::InputObjectType { ")cpp"
+					   << inputType.type << R"cpp(" });
+)cpp";
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_unionTypes.empty())
+	{
+		for (const auto& unionType : _unionTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << unionType.cppType
+					   << R"cpp( = makeNamedValidateType(service::UnionType { ")cpp"
+					   << unionType.type << R"cpp(" });
+)cpp";
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_interfaceTypes.empty())
+	{
+		for (const auto& interfaceType : _interfaceTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << interfaceType.cppType
+					   << R"cpp( = makeNamedValidateType(service::InterfaceType { ")cpp"
+					   << interfaceType.type << R"cpp(" });
+)cpp";
+		}
+		sourceFile << std::endl;
+	}
+
+	std::unordered_map<std::string, std::vector<std::string>> _interfacePossibleTypes;
+
+	if (!_objectTypes.empty())
+	{
+		for (const auto& objectType : _objectTypes)
+		{
+			sourceFile << R"cpp(		auto type)cpp" << objectType.cppType
+					   << R"cpp( = makeNamedValidateType(service::ObjectType { ")cpp"
+					   << objectType.type << R"cpp(" });
+)cpp";
+
+			if (!objectType.interfaces.empty())
+			{
+				for (const auto& interfaceName : objectType.interfaces)
+				{
+					_interfacePossibleTypes.try_emplace(interfaceName, std::vector<std::string> {})
+						.first->second.push_back(objectType.cppType);
+				}
+			}
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_inputTypes.empty())
+	{
+		for (const auto& inputType : _inputTypes)
+		{
+			if (!inputType.fields.empty())
+			{
+				bool firstValue = true;
+
+				sourceFile << R"cpp(		type)cpp" << inputType.cppType << R"cpp(->setFields({
+)cpp";
+
+				outputValidationInputFieldList(sourceFile,
+					inputType.fields,
+					R"cpp(				)cpp",
+					R"cpp(,
+)cpp");
+
+				sourceFile << R"cpp(
+			});
+)cpp";
+			}
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_unionTypes.empty())
+	{
+		for (const auto& unionType : _unionTypes)
+		{
+			outputValidationSetPossibleTypes(sourceFile, unionType.cppType, unionType.options);
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_interfaceTypes.empty())
+	{
+		sourceFile << std::endl;
+
+		for (const auto& interfaceType : _interfaceTypes)
+		{
+			const auto& itr = _interfacePossibleTypes.find(interfaceType.type);
+			if (itr != _interfacePossibleTypes.cend())
+			{
+				outputValidationSetPossibleTypes(sourceFile, interfaceType.cppType, itr->second);
+			}
+
+			outputValidationSetFields(sourceFile, interfaceType.cppType, interfaceType.fields);
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_objectTypes.empty())
+	{
+		for (const auto& objectType : _objectTypes)
+		{
+			outputValidationSetFields(sourceFile, objectType.cppType, objectType.fields);
+		}
+		sourceFile << std::endl;
+	}
+
+	if (!_directives.empty())
+	{
+		sourceFile << std::endl;
+
+		sourceFile << R"cpp(		_directives = {
+)cpp";
+		bool firstDirective = true;
+
+		for (const auto& directive : _directives)
+		{
+			if (!firstDirective)
+			{
+				sourceFile << R"cpp(,
+)cpp";
+			}
+			firstDirective = false;
+
+			sourceFile << R"cpp(			{ ")cpp" << directive.name << R"cpp(", { { )cpp";
+
+			if (!directive.locations.empty())
+			{
+				bool firstLocation = true;
+
+				for (const auto& location : directive.locations)
+				{
+					if (!firstLocation)
+					{
+						sourceFile << R"cpp(,
+)cpp";
+					}
+
+					firstLocation = false;
+					sourceFile << s_introspectionNamespace << "::DirectiveLocation::" << location;
+				}
+			}
+			sourceFile << R"cpp( }, { )cpp";
+
+			outputValidationInputFieldList(sourceFile, directive.arguments, "", ", ");
+			sourceFile << R"cpp( } } })cpp";
+		}
+		sourceFile << R"cpp(
+		};
+
+)cpp";
+	}
+
+	for (const auto& operationType : _operationTypes)
+	{
+		sourceFile << R"cpp(		_operationTypes.)cpp" << operationType.operation
+				   << R"cpp(Type = ")cpp" << operationType.type << R"cpp(";
+)cpp";
+	}
+
+	sourceFile << R"cpp(
+	}
+};
+
+)cpp";
 }
 
 void Generator::outputObjectImplementation(
@@ -3437,6 +3781,73 @@ std::string Generator::getIntrospectionType(
 	}
 
 	return introspectionType.str();
+}
+
+std::string Generator::getValidationType(
+	const std::string& type, const TypeModifierStack& modifiers) const noexcept
+{
+	size_t wrapperCount = 0;
+	bool nonNull = true;
+	std::ostringstream validationType;
+
+	for (auto modifier : modifiers)
+	{
+		if (nonNull)
+		{
+			switch (modifier)
+			{
+				case service::TypeModifier::None:
+				case service::TypeModifier::List:
+				{
+					validationType << R"cpp(makeNonNullOfType()cpp";
+					++wrapperCount;
+					break;
+				}
+
+				case service::TypeModifier::Nullable:
+				{
+					// If the next modifier is Nullable that cancels the non-nullable state.
+					nonNull = false;
+					break;
+				}
+			}
+		}
+
+		switch (modifier)
+		{
+			case service::TypeModifier::None:
+			{
+				nonNull = true;
+				break;
+			}
+
+			case service::TypeModifier::List:
+			{
+				nonNull = true;
+				validationType << R"cpp(makeListOfType()cpp";
+				++wrapperCount;
+				break;
+			}
+
+			case service::TypeModifier::Nullable:
+				break;
+		}
+	}
+
+	if (nonNull)
+	{
+		validationType << R"cpp(makeNonNullOfType()cpp";
+		++wrapperCount;
+	}
+
+	validationType << R"cpp(type)cpp" << type;
+
+	for (size_t i = 0; i < wrapperCount; ++i)
+	{
+		validationType << R"cpp())cpp";
+	}
+
+	return validationType.str();
 }
 
 std::vector<std::string> Generator::outputSeparateFiles() const noexcept

@@ -381,6 +381,16 @@ private:
 	std::string getResolverDeclaration(const OutputField& outputField) const noexcept;
 
 	bool outputSource() const noexcept;
+	void outputValidationInputField(std::ostream& sourceFile, const InputField& inputField) const;
+	void outputValidationInputFieldList(std::ostream& sourceFile, const InputFieldList& list,
+		const std::string indent, const std::string separator) const;
+	void outputValidationOutputField(
+		std::ostream& sourceFile, const OutputField& outputField) const;
+	void outputValidationSetFields(
+		std::ostream& sourceFile, const std::string& cppType, const OutputFieldList& list) const;
+	void outputValidationSetPossibleTypes(std::ostream& sourceFile, const std::string& cppType,
+		const std::vector<std::string>& options) const;
+	void outputValidationContext(std::ostream& sourceFile) const;
 	void outputObjectImplementation(
 		std::ostream& sourceFile, const ObjectType& objectType, bool isQueryType) const;
 	void outputObjectIntrospection(std::ostream& sourceFile, const ObjectType& objectType) const;
@@ -392,6 +402,8 @@ private:
 	std::string getResultAccessType(const OutputField& result) const noexcept;
 	std::string getTypeModifiers(const TypeModifierStack& modifiers) const noexcept;
 	std::string getIntrospectionType(
+		const std::string& type, const TypeModifierStack& modifiers) const noexcept;
+	std::string getValidationType(
 		const std::string& type, const TypeModifierStack& modifiers) const noexcept;
 
 	std::vector<std::string> outputSeparateFiles() const noexcept;
