@@ -37,6 +37,9 @@ struct ast
 GRAPHQLPEG_EXPORT ast parseString(std::string_view input);
 GRAPHQLPEG_EXPORT ast parseFile(std::string_view filename);
 
+GRAPHQLPEG_EXPORT ast parseExecutableString(std::string_view input);
+GRAPHQLPEG_EXPORT ast parseExecutableFile(std::string_view filename);
+
 } /* namespace peg */
 
 GRAPHQLPEG_EXPORT peg::ast operator"" _graphql(const char* text, size_t size);

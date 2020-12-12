@@ -65,14 +65,14 @@ int main(int argc, char** argv)
 
 		if (argc > 1)
 		{
-			query = peg::parseFile(argv[1]);
+			query = peg::parseExecutableFile(argv[1]);
 		}
 		else
 		{
 			std::istream_iterator<char> start { std::cin >> std::noskipws }, end {};
 			std::string input { start, end };
 
-			query = peg::parseString(std::move(input));
+			query = peg::parseExecutableString(std::move(input));
 		}
 
 		if (!query.root)

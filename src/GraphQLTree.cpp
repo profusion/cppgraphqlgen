@@ -651,6 +651,9 @@ const std::string ast_control<input_object_type_extension_content>::error_messag
 template <>
 const std::string ast_control<document_content>::error_message =
 	"Expected https://facebook.github.io/graphql/June2018/#Document";
+template <>
+const std::string ast_control<executable_document_content>::error_message =
+	"Expected https://spec.graphql.org/June2018/#sec-Executable-Definitions";
 
 ast_unescaped_string::ast_unescaped_string(
 	std::unique_ptr<ast_node>&& reference, std::string&& unescaped_)
@@ -680,6 +683,21 @@ ast parseString(std::string_view input)
 	return result;
 }
 
+ast parseExecutableString(std::string_view input)
+{
+	ast result { std::make_shared<ast_input>(
+					 ast_input { std::vector<char> { input.cbegin(), input.cend() } }),
+		{} };
+	const auto& data = std::get<std::vector<char>>(result.input->data);
+	memory_input<> in(data.data(), data.size(), "GraphQL");
+
+	result.root =
+		parse_tree::parse<executable_document, ast_node, ast_selector, nothing, ast_control>(
+			std::move(in));
+
+	return result;
+}
+
 ast parseFile(std::string_view filename)
 {
 	ast result { std::make_shared<ast_input>(
@@ -689,6 +707,20 @@ ast parseFile(std::string_view filename)
 
 	result.root =
 		parse_tree::parse<document, ast_node, ast_selector, nothing, ast_control>(std::move(in));
+
+	return result;
+}
+
+ast parseExecutableFile(std::string_view filename)
+{
+	ast result { std::make_shared<ast_input>(
+					 ast_input { std::make_unique<file_input<>>(filename) }),
+		{} };
+	auto& in = *std::get<std::unique_ptr<file_input<>>>(result.input->data);
+
+	result.root =
+		parse_tree::parse<executable_document, ast_node, ast_selector, nothing, ast_control>(
+			std::move(in));
 
 	return result;
 }

@@ -413,3 +413,86 @@ TEST(PegtlCase, AnalyzeGrammar)
 	ASSERT_EQ(0, analyze<document>(true))
 		<< "there shuldn't be any infinite loops in the PEG version of the grammar";
 }
+
+TEST(PegtlCase, ParseExecutableDocument)
+{
+	memory_input<> input(R"gql(
+		# Copyright (c) 2015-present, Facebook, Inc.
+		#
+		# This source code is licensed under the MIT license found in the
+		# LICENSE file in the root directory of this source tree.
+
+		query queryName($foo: ComplexType, $site: Site = MOBILE) {
+		  whoever123is: node(id: [123, 456]) {
+			id ,
+			... on User @defer {
+			  field2 {
+				id ,
+				alias: field1(first:10, after:$foo,) @include(if: $foo) {
+				  id,
+				  ...frag
+				}
+			  }
+			}
+			... @skip(unless: $foo) {
+			  id
+			}
+			... {
+			  id
+			}
+		  }
+		}
+
+		mutation likeStory {
+		  like(story: 123) @defer {
+			story {
+			  id
+			}
+		  }
+		}
+
+		subscription StoryLikeSubscription($input: StoryLikeSubscribeInput) {
+		  storyLikeSubscribe(input: $input) {
+			story {
+			  likers {
+				count
+			  }
+			  likeSentence {
+				text
+			  }
+			}
+		  }
+		}
+
+		fragment frag on Friend {
+		  foo(size: $size, bar: $b, obj: {key: "value", block: """
+
+			  block string uses \"""
+
+		  """})
+		}
+
+		{
+		  unnamed(truthy: true, falsey: false, nullish: null),
+		  query
+		})gql",
+		"ParseKitchenSinkQuery");
+
+	const bool result = parse<executable_document>(input);
+
+	ASSERT_TRUE(result) << "we should be able to parse the doc";
+}
+
+TEST(PegtlCase, ParseExecutableDocumentCounterExample)
+{
+	memory_input<> input(R"gql(scalar CustomScalar)gql",
+		"ParseExecutableDocumentCounterExample");
+
+	ASSERT_THROW(parse<executable_document>(input), parse_error);
+}
+
+TEST(PegtlCase, AnalyzeExecutableGrammar)
+{
+	ASSERT_EQ(0, analyze<executable_document>(true))
+		<< "there shuldn't be any infinite loops in the PEG version of the grammar";
+}
