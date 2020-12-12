@@ -120,6 +120,15 @@ target_include_directories(sample_nointrospection PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../include
   ${CMAKE_CURRENT_SOURCE_DIR}/../PEGTL/include)
 
+
+add_executable(parser parser/parser.cpp)
+target_link_libraries(parser PRIVATE
+  graphqlpeg)
+target_include_directories(parser PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}/../include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../PEGTL/include)
+
 if(WIN32 AND BUILD_SHARED_LIBS)
   add_custom_target(copy_sample_dlls ${CMAKE_COMMAND} -E copy $<TARGET_FILE:graphqlservice> ${CMAKE_CURRENT_BINARY_DIR}
       COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:graphqljson> ${CMAKE_CURRENT_BINARY_DIR}
