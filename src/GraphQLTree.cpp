@@ -72,10 +72,12 @@ struct ast_selector<escaped_unicode> : std::true_type
 		{
 			auto content = n->string_view();
 
-			if (unescape::utf8_append_utf32(n->unescaped,
+			std::string unescaped;
+			if (unescape::utf8_append_utf32(unescaped,
 					unescape::unhex_string<uint32_t>(content.data() + 1,
 						content.data() + content.size())))
 			{
+				n = std::make_unique<ast_unescaped_string>(std::move(n), std::move(unescaped));
 				return;
 			}
 		}
@@ -83,6 +85,17 @@ struct ast_selector<escaped_unicode> : std::true_type
 		throw parse_error("invalid escaped unicode code point", n->begin());
 	}
 };
+
+static const std::array<std::pair<char, std::string_view>, 8> escaped_char_map = { {
+	{ '"', "\"" },
+	{ '\\', "\\" },
+	{ '/', "/" },
+	{ 'b', "\b" },
+	{ 'f', "\f" },
+	{ 'n', "\n" },
+	{ 'r', "\r" },
+	{ 't', "\t" },
+} };
 
 template <>
 struct ast_selector<escaped_char> : std::true_type
@@ -93,42 +106,13 @@ struct ast_selector<escaped_char> : std::true_type
 		{
 			const char ch = n->string_view().front();
 
-			switch (ch)
+			for (const auto& it : escaped_char_map)
 			{
-				case '"':
-					n->unescaped = "\"";
+				if (it.first == ch)
+				{
+					n->unescaped = it.second;
 					return;
-
-				case '\\':
-					n->unescaped = "\\";
-					return;
-
-				case '/':
-					n->unescaped = "/";
-					return;
-
-				case 'b':
-					n->unescaped = "\b";
-					return;
-
-				case 'f':
-					n->unescaped = "\f";
-					return;
-
-				case 'n':
-					n->unescaped = "\n";
-					return;
-
-				case 'r':
-					n->unescaped = "\r";
-					return;
-
-				case 't':
-					n->unescaped = "\t";
-					return;
-
-				default:
-					break;
+				}
 			}
 		}
 
@@ -139,10 +123,6 @@ struct ast_selector<escaped_char> : std::true_type
 template <>
 struct ast_selector<string_quote_character> : std::true_type
 {
-	static void transform(std::unique_ptr<ast_node>& n)
-	{
-		n->unescaped = n->string_view();
-	}
 };
 
 template <>
@@ -150,17 +130,13 @@ struct ast_selector<block_escape_sequence> : std::true_type
 {
 	static void transform(std::unique_ptr<ast_node>& n)
 	{
-		n->unescaped = R"bq(""")bq";
+		n->unescaped = n->m_string_view.substr(1);
 	}
 };
 
 template <>
 struct ast_selector<block_quote_character> : std::true_type
 {
-	static void transform(std::unique_ptr<ast_node>& n)
-	{
-		n->unescaped = n->string_view();
-	}
 };
 
 template <>
@@ -172,25 +148,29 @@ struct ast_selector<string_value> : std::true_type
 		{
 			if (n->children.size() > 1)
 			{
-				n->unescaped.reserve(std::accumulate(n->children.cbegin(),
+				std::string unescaped;
+				unescaped.reserve(std::accumulate(n->children.cbegin(),
 					n->children.cend(),
 					size_t(0),
 					[](size_t total, const std::unique_ptr<ast_node>& child) {
 						return total + child->unescaped.size();
 					}));
-
 				for (const auto& child : n->children)
 				{
-					n->unescaped.append(child->unescaped);
+					unescaped.append(child->unescaped);
 				}
+				n = std::make_unique<ast_unescaped_string>(std::move(n), std::move(unescaped));
 			}
 			else
 			{
-				n->unescaped = std::move(n->children.front()->unescaped);
+				auto begin = internal::iterator(n->m_begin);
+				auto string_view = n->m_string_view;
+				n = std::move(n->children.front());
+				n->set_type<string_value>();
+				n->m_string_view = string_view;
+				n->m_begin = begin;
 			}
 		}
-
-		n->children.clear();
 	}
 };
 
@@ -671,6 +651,20 @@ const std::string ast_control<input_object_type_extension_content>::error_messag
 template <>
 const std::string ast_control<document_content>::error_message =
 	"Expected https://facebook.github.io/graphql/June2018/#Document";
+
+ast_unescaped_string::ast_unescaped_string(
+	std::unique_ptr<ast_node>&& reference, std::string&& unescaped_)
+{
+	_unescaped = std::move(unescaped_);
+
+	set_type<string_value>();
+	m_string_view = reference->m_string_view;
+	unescaped = _unescaped;
+	m_begin = reference->m_begin;
+	source = reference->source;
+
+	reference.reset();
+}
 
 ast parseString(std::string_view input)
 {
